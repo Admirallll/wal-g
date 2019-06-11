@@ -2,6 +2,7 @@ package internal
 
 import (
 	"archive/zip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -92,9 +93,9 @@ func (uploader *Uploader) UploadDirectory(path string, name string) error {
 	}
 	defer tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
-	err = zipDirectory(path, tmpFile.Name())
+	err = zipDirectory(path, tmpFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error on zipping directory: %v", err)
 	}
 	file, err := os.Open(tmpFile.Name())
 	if err != nil {
@@ -104,30 +105,24 @@ func (uploader *Uploader) UploadDirectory(path string, name string) error {
 	return uploader.UploadFileWithSanitizedName(namedReader)
 }
 
-func zipDirectory(pathToFolder string, pathToZip string) error {
-	newZipFile, err := os.Create(pathToZip)
-	if err != nil {
-		return err
-	}
-	defer newZipFile.Close()
-
-	zipWriter := zip.NewWriter(newZipFile)
+func zipDirectory(pathToFolder string, tempFile *os.File) error {
+	zipWriter := zip.NewWriter(tempFile)
 	defer zipWriter.Close()
-
 	return filepath.Walk(pathToFolder, func(s string, info os.FileInfo, err error) error {
+		if info.IsDir() {
+			return nil
+		}
 		return addFileToZip(zipWriter, s)
 	})
 }
 
 func addFileToZip(zipWriter *zip.Writer, filename string) error {
-
 	fileToZip, err := os.Open(filename)
 	if err != nil {
 		return err
 	}
 	defer fileToZip.Close()
 
-	// Get the file information
 	info, err := fileToZip.Stat()
 	if err != nil {
 		return err

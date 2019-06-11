@@ -51,7 +51,7 @@ func (ch *ClickHouse) GetTables() ([]Table, error) {
 
 func (ch *ClickHouse) Freeze(tables []Table) error {
 	for _, table := range tables {
-		query := "ALTER TABLE `" + table.Database + "." + table.Name + "` FREEZE PARTITION tuple();"
+		query := "ALTER TABLE `" + table.Name + "` FREEZE PARTITION tuple();"
 		_, err := ch.conn.Exec(query)
 
 		if err != nil {

@@ -36,11 +36,24 @@ func HandleBackupPush(uploader *internal.Uploader) {
 		fmt.Println("error on remove files", err)
 	}
 	tables, _ := ch.GetTables()
-	ch.Freeze(tables)
 
-	uploader.UploadDirectory(path.Join(clickHouseFolderPath, shadowSuffix), path.Join(backupName, shadowSuffix))
-	uploader.UploadDirectory(path.Join(clickHouseFolderPath, metaSuffix), path.Join(backupName, metaSuffix))
-	uploadStreamSentinel(&StreamSentinelDto{StartLocalTime: timeStart}, uploader, backupName+utility.SentinelSuffix)
+	err = ch.Freeze(tables)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	err = uploader.UploadDirectory(path.Join(clickHouseFolderPath, shadowSuffix), path.Join(backupName, shadowSuffix))
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = uploader.UploadDirectory(path.Join(clickHouseFolderPath, metaSuffix), path.Join(backupName, metaSuffix))
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = uploadStreamSentinel(&StreamSentinelDto{StartLocalTime: timeStart}, uploader, backupName+utility.SentinelSuffix)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 type StreamSentinelDto struct {
