@@ -1,7 +1,10 @@
 package internal
 
 import (
+	"archive/zip"
 	"io"
+	"io/ioutil"
+	"os"
 	"path"
 	"path/filepath"
 	"sync"
@@ -82,12 +85,86 @@ func (uploader *Uploader) UploadWalFile(file NamedReader) error {
 	return uploader.UploadFile(&NamedReaderImpl{walFileReader, file.Name()})
 }
 
+func (uploader *Uploader) UploadDirectory(path string, name string) error {
+	tmpFile, err := ioutil.TempFile("", "ch_backup_")
+	if err != nil {
+		return err
+	}
+	defer tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+	err = zipDirectory(path, tmpFile.Name())
+	if err != nil {
+		return err
+	}
+	file, err := os.Open(tmpFile.Name())
+	if err != nil {
+		return err
+	}
+	namedReader := NewNamedReaderImpl(file, name)
+	return uploader.UploadFileWithSanitizedName(namedReader)
+}
+
+func zipDirectory(pathToFolder string, pathToZip string) error {
+	newZipFile, err := os.Create(pathToZip)
+	if err != nil {
+		return err
+	}
+	defer newZipFile.Close()
+
+	zipWriter := zip.NewWriter(newZipFile)
+	defer zipWriter.Close()
+
+	return filepath.Walk(pathToFolder, func(s string, info os.FileInfo, err error) error {
+		return addFileToZip(zipWriter, s)
+	})
+}
+
+func addFileToZip(zipWriter *zip.Writer, filename string) error {
+
+	fileToZip, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer fileToZip.Close()
+
+	// Get the file information
+	info, err := fileToZip.Stat()
+	if err != nil {
+		return err
+	}
+
+	header, err := zip.FileInfoHeader(info)
+	if err != nil {
+		return err
+	}
+
+	// Using FileInfoHeader() above only uses the basename of the file. If we want
+	// to preserve the folder structure we can overwrite this with the full path.
+	header.Name = filename
+
+	// Change to deflate to gain better compression
+	// see http://golang.org/pkg/archive/zip/#pkg-constants
+	header.Method = zip.Deflate
+
+	writer, err := zipWriter.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(writer, fileToZip)
+	return err
+}
+
 // TODO : unit tests
 // UploadFile compresses a file and uploads it.
 func (uploader *Uploader) UploadFile(file NamedReader) error {
-	compressedFile := CompressAndEncrypt(file, uploader.Compressor, ConfigureCrypter())
-	dstPath := utility.SanitizePath(filepath.Base(file.Name()) + "." + uploader.Compressor.FileExtension())
+	newFile := NewNamedReaderImpl(file, utility.SanitizePath(filepath.Base(file.Name())))
 
+	return uploader.UploadFileWithSanitizedName(newFile)
+}
+
+func (uploader *Uploader) UploadFileWithSanitizedName(file NamedReader) error {
+	compressedFile := CompressAndEncrypt(file, uploader.Compressor, ConfigureCrypter())
+	dstPath := file.Name() + "." + uploader.Compressor.FileExtension()
 	err := uploader.Upload(dstPath, compressedFile)
 	tracelog.InfoLogger.Println("FILE PATH:", dstPath)
 	return err

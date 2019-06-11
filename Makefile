@@ -1,6 +1,7 @@
 MAIN_PG_PATH := main/pg
 MAIN_MYSQL_PATH := main/mysql
 MAIN_REDIS_PATH := main/redis
+MAIN_CLICKHOUSE_PATH := main/clickhouse
 DOCKER_COMMON := golang ubuntu s3
 CMD_FILES = $(wildcard wal-g/*.go)
 PKG_FILES = $(wildcard internal/**/*.go internal/**/**/*.go internal/*.go)
@@ -13,7 +14,7 @@ ifdef GOTAGS
 override GOTAGS := -tags $(GOTAGS)
 endif
 
-test: install deps lint unittest pg_build mysql_build redis_build unlink_brotli pg_integration_test mysql_integration_test redis_integration_test
+test: install deps lint unittest pg_build mysql_build redis_build clickhouse_build unlink_brotli pg_integration_test mysql_integration_test redis_integration_test clickhouse_integration_test
 
 pg_test: install deps pg_build lint unittest unlink_brotli pg_integration_test
 
@@ -66,6 +67,22 @@ redis_clean:
 
 redis_install: redis_build
 	mv $(MAIN_REDIS_PATH)/wal-g $(GOBIN)/wal-g
+
+clickhouse_test: install deps clickhouse_build lint unittest unlink_brotli clickhouse_integration_test
+
+clickhouse_build: $(CMD_FILES) $(PKG_FILES)
+	(cd $(MAIN_CLICKHOUSE_PATH) && go build -o wal-g $(GOTAGS) -ldflags "-s -w -X github.com/wal-g/wal-g/cmd.BuildDate=`date -u +%Y.%m.%d_%H:%M:%S` -X github.com/wal-g/wal-g/cmd.GitRevision=`git rev-parse --short HEAD` -X github.com/wal-g/wal-g/cmd.WalgVersion=`git tag -l --points-at HEAD`")
+
+clickhouse_integration_test:
+	docker-compose build $(DOCKER_COMMON) clickhouse clickhouse_tests
+	docker-compose up --exit-code-from clickhouse_tests clickhouse_tests
+
+clickhouse_clean:
+	(cd $(MAIN_CLICKHOUSE_PATH) && go clean)
+	./cleanup.sh
+
+clickhouse_install: clickhouse_build
+	mv $(MAIN_CLICKHOUSE_PATH)/wal-g $(GOBIN)/wal-g
 
 unittest:
 	go list ./... | grep -Ev 'vendor|submodules|tmp' | xargs go vet
